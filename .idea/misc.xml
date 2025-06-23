@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AIAssistantCustomInstructionsStorage">
+    <option name="instructions">
+      <map>
+        <entry key="AIAssistant.VCS.GenerateCommitMessage">
+          <value>
+            <AIAssistantStoredInstruction>
+              <option name="actionId" value="AIAssistant.VCS.GenerateCommitMessage" />
+              <option name="content" value="- 必ず日本語&#10;- 1 行目は Conventional Commits: &lt;type&gt;: &lt;50字以内の概要&gt;&#10;- 空行を挟み、ファイル単位の変更点を箇条書き&#10;- 背景 / 目的 を 1 行追記&#10;- 関連 Issue があれば Refs: #番号 で付与" />
+            </AIAssistantStoredInstruction>
+          </value>
+        </entry>
+        <entry key="ij.vcs.review-buddy.summarize.short.github">
+          <value>
+            <AIAssistantStoredInstruction>
+              <option name="actionId" value="ij.vcs.review-buddy.summarize.short.github" />
+              <option name="content" value="- 必ず日本語&#10;- 1 行目は Conventional Commits: &lt;type&gt;: &lt;50字以内の概要&gt;&#10;- 空行を挟み、ファイル単位の変更点を箇条書き&#10;- 背景 / 目的 を 1 行追記&#10;- 関連 Issue があれば Refs: #番号 で付与" />
+            </AIAssistantStoredInstruction>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>
