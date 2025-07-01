@@ -358,8 +358,12 @@ def maze_to_json(m: Maze, idx: int, dia: Tuple[int, Cell, Cell]) -> Dict:
     }
 
 # -------------------- バッチ生成 --------------------
-def _generate_single(cfg: Config, idx: int) -> Tuple[Dict, str]:
+def _generate_single(idx: int, seed_base: int | None = None) -> Tuple[Dict, str]:
     """1 つの迷路を生成して JSON と文字描画を返す"""
+    if seed_base is not None:
+        # 各プロセスで一意なシードを設定する。seed_base が 100 で idx が 3 の場合、103
+        # をシード値とするという意味です。
+        random.seed(seed_base + idx)
     m, dia_info = generate_maze_with_diameter()
     ascii_maze = render_maze(m)
     return maze_to_json(m, idx, dia_info), ascii_maze
@@ -372,7 +376,13 @@ def generate_batch(cfg: Config, workers: int) -> List[Dict]:
 
     out: List[Dict] = [None] * cfg.maze_count
     with ProcessPoolExecutor(max_workers=workers) as ex:
-        futures = {ex.submit(_generate_single, cfg, i): i for i in range(1, cfg.maze_count + 1)}
+        # seed が指定されている場合は、各プロセスに seed_base として渡す
+        if cfg.seed is not None:
+            futures = {ex.submit(_generate_single, i, cfg.seed): i
+                       for i in range(1, cfg.maze_count + 1)}
+        else:
+            futures = {ex.submit(_generate_single, i): i
+                       for i in range(1, cfg.maze_count + 1)}
         for fut in as_completed(futures):
             idx = futures[fut]
             data, ascii_maze = fut.result()
