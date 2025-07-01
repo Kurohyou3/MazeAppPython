@@ -44,6 +44,10 @@ from collections import deque
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import argparse
 
+# 標準エラー出力が端末(TTY)かどうかをチェック
+# バックグラウンド実行でファイルにリダイレクトしている場合は False になる
+IS_TTY = sys.stderr.isatty()
+
 # -------------------- 調整可能なパラメータ --------------------
 # スクリプトと同じディレクトリに map_data フォルダを作成
 DEFAULT_OUT_DIR = Path(__file__).parent / "map_data"
@@ -351,8 +355,9 @@ def generate_maze_with_diameter() -> Tuple[Maze, Tuple[int, Cell, Cell]]:
     while True:
         attempts += 1
 
-        # 100 回ごとに試行回数を同じ行で更新表示
-        if attempts % 100 == 0:
+        # 100 回ごとに進捗を表示する。
+        # ファイルにリダイレクトしている場合は表示を省略する
+        if attempts % 100 == 0 and IS_TTY:
             print(
                 f"\r⏳ {attempts} attempts...", end="", file=sys.stderr, flush=True
             )
@@ -372,8 +377,8 @@ def generate_maze_with_diameter() -> Tuple[Maze, Tuple[int, Cell, Cell]]:
             continue
         dia_len, A, B = graph_diameter(maze_to_graph(m))
         if dia_len <= config.max_diameter:
-            # 成功したら進捗表示用の行を改行して消す
-            if attempts >= 100:
+            # 進捗表示を行っていた場合は、改行して表示を整える
+            if attempts >= 100 and IS_TTY:
                 print(file=sys.stderr)
             return m, (dia_len, A, B)
 
