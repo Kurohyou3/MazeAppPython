@@ -19,13 +19,15 @@ import os, json, random, datetime
 from collections import deque
 from dataclasses import dataclass
 from typing import List, Tuple, Dict
+from pathlib import Path  # ファイルパス操作を簡単に行うためのモジュール
 
 WIDTH, HEIGHT   = 5 ,5
 START           = (WIDTH // 2, HEIGHT // 2)   # (5,5)
 TURN_LIMIT      = 30
 MIN_PATH_LEN    = 7
 MAZE_COUNT      = 10                          # 生成個数
-OUT_DIR         = "mazefiles"                 # 出力ディレクトリ
+# スクリプトと同じフォルダに map_data フォルダを作成して出力
+OUT_DIR         = Path(__file__).parent / "map_data"
 
 # -------------------- データ構造 --------------------
 @dataclass
@@ -217,11 +219,14 @@ def main():
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     file_name = f"maze_{WIDTH}x{HEIGHT}_T{TURN_LIMIT}_L{MIN_PATH_LEN}_{timestamp}.json"
-    os.makedirs(OUT_DIR, exist_ok=True)
-    file_path = os.path.join(OUT_DIR, file_name)
+    OUT_DIR.mkdir(exist_ok=True)
+    file_path = OUT_DIR / file_name
 
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(mazes, f, ensure_ascii=False, indent=2)
+    # Path.write_text を使って JSON を保存
+    file_path.write_text(
+        json.dumps(mazes, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
 
     print(f"✅ {len(mazes)} mazes saved to: {file_path}")
 
