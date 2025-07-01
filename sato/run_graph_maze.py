@@ -343,22 +343,38 @@ def graph_diameter(g: Adj) -> Tuple[int, Cell, Cell]:
 
 # -------------------- 径制約付き生成 --------------------
 def generate_maze_with_diameter() -> Tuple[Maze, Tuple[int, Cell, Cell]]:
-    attempts = 0
+    """径制約を満たす迷路が得られるまで試行する"""
+
+    attempts = 0        # 現在までの試行回数
+    warned = False      # 上限を超えたときの警告を一度だけ出すためのフラグ
+
     while True:
         attempts += 1
-        if attempts > config.max_attempts_per_maze:
+
+        # 100 回ごとに試行回数を同じ行で更新表示
+        if attempts % 100 == 0:
             print(
-                f"⚠️  {attempts} attempts > limit."
+                f"\r⏳ {attempts} attempts...", end="", file=sys.stderr, flush=True
+            )
+
+        # 設定した上限を超えたら一度だけ警告を表示
+        if attempts > config.max_attempts_per_maze and not warned:
+            print(
+                f"\n⚠️  {attempts} attempts > limit."
                 f" Consider raising config.max_diameter ({config.max_diameter}).",
                 file=sys.stderr,
             )
-            attempts = 0
+            warned = True
+
         m = generate_tree()
         add_loops(m)
         if not (is_connected(m) and not violates(m)):
             continue
         dia_len, A, B = graph_diameter(maze_to_graph(m))
         if dia_len <= config.max_diameter:
+            # 成功したら進捗表示用の行を改行して消す
+            if attempts >= 100:
+                print(file=sys.stderr)
             return m, (dia_len, A, B)
 
 # -------------------- JSON 変換 --------------------
