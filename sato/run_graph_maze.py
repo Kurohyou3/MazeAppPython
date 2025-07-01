@@ -4,8 +4,9 @@ graph_maze.ipynb の処理を Python スクリプト化したもの。
 遠隔環境で接続が切れても処理を続けられるよう、
 nohup 等で実行することを想定しています。
 実行例:
-    nohup python3 run_graph_maze.py > log.txt 2>&1 &
+    nohup python3 run_graph_maze.py -n 10 -w 4 > log.txt 2>&1 &
 
+オプションで生成個数(-n)や並列実行数(-w)を指定できます。
 生成される迷路 JSON は sato/map_data フォルダに保存されます。
 ノートブック版と同じ内容を出力します。
 """
@@ -17,6 +18,8 @@ import sys
 from dataclasses import dataclass
 from typing import List, Tuple, Dict
 from collections import deque
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import argparse
 
 # -------------------- 調整可能なパラメータ --------------------
 SIZE             = 10      # 盤面の幅＝高さ
@@ -342,16 +345,28 @@ def maze_to_json(m: Maze, idx: int, dia: Tuple[int, Cell, Cell]) -> Dict:
     }
 
 # -------------------- バッチ生成 --------------------
-def generate_batch() -> List[Dict]:
+def _generate_single(idx: int) -> Tuple[Dict, str]:
+    """1 つの迷路を生成して JSON と文字描画を返す"""
+    m, dia_info = generate_maze_with_diameter()
+    ascii_maze = render_maze(m)
+    return maze_to_json(m, idx, dia_info), ascii_maze
+
+
+def generate_batch(workers: int) -> List[Dict]:
+    """複数迷路を並列で生成する"""
     if SEED is not None:
         random.seed(SEED)
-    out: List[Dict] = []
-    for i in range(1, MAZE_COUNT + 1):
-        print(f"\n[{i}/{MAZE_COUNT}] generating (diam ≤ {MAX_DIAMETER}) …")
-        m, dia_info = generate_maze_with_diameter()
-        print(render_maze(m))
-        print(f"↳ diameter = {dia_info[0]}\n")
-        out.append(maze_to_json(m, i, dia_info))
+
+    out: List[Dict] = [None] * MAZE_COUNT
+    with ProcessPoolExecutor(max_workers=workers) as ex:
+        futures = {ex.submit(_generate_single, i): i for i in range(1, MAZE_COUNT + 1)}
+        for fut in as_completed(futures):
+            idx = futures[fut]
+            data, ascii_maze = fut.result()
+            print(f"\n[{idx}/{MAZE_COUNT}] generated (diam = {data['diameter']})")
+            print(ascii_maze)
+            out[idx - 1] = data
+
     return out
 
 # 出力を保存
@@ -364,8 +379,25 @@ def save_batch(mazes: List[Dict]):
     print(f"✅ Saved {len(mazes)} maze(s) → {path}")
 
 # -------------------- main --------------------
+def parse_args() -> argparse.Namespace:
+    """コマンドライン引数を解釈"""
+    parser = argparse.ArgumentParser(description="迷路を生成して JSON 出力")
+    parser.add_argument("-n", "--count", type=int, default=MAZE_COUNT,
+                        help="生成する迷路の個数")
+    parser.add_argument("-w", "--workers", type=int,
+                        default=os.cpu_count() or 1,
+                        help="並列実行するプロセス数")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="乱数シード。指定すると再現可能")
+    return parser.parse_args()
+
+
 def main():
-    batch = generate_batch()
+    args = parse_args()
+    global MAZE_COUNT, SEED
+    MAZE_COUNT = args.count
+    SEED = args.seed
+    batch = generate_batch(args.workers)
     save_batch(batch)
 
 if __name__ == "__main__":
