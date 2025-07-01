@@ -157,6 +157,9 @@ def render_maze(m: Maze) -> str:
 def generate_tree() -> Maze:
     v = [[True]*(SIZE-1) for _ in range(SIZE)]
     h = [[True]*SIZE     for _ in range(SIZE-1)]
+    # Maze オブジェクトを最初に作成しておく
+    # dataclass を使うことで v と h のリストをまとめて管理できる
+    maze = Maze(v, h)
     visited = [[False]*SIZE for _ in range(SIZE)]
     degree  = [[0]*SIZE for _ in range(SIZE)]
 
@@ -174,12 +177,12 @@ def generate_tree() -> Maze:
             cand = [t for t in cand if len(cand) >= 2]
 
         cand = [t for t in cand
-                if not makes_open_square(Maze(v, h), x, y, t[0])
-                and max_run_after_carve(Maze(v, h), x, y, t[0]) <= MAX_STRAIGHT]
+                if not makes_open_square(maze, x, y, t[0])
+                and max_run_after_carve(maze, x, y, t[0]) <= MAX_STRAIGHT]
 
         if cand:
             d, nx, ny = random.choice(cand)
-            carve(Maze(v, h), x, y, d)
+            carve(maze, x, y, d)
             degree[y][x]   += 1
             degree[ny][nx] += 1
             visited[ny][nx] = True
@@ -188,7 +191,8 @@ def generate_tree() -> Maze:
             stack.append((nx, ny, d, nxt_run, nxt_dist))
         else:
             stack.pop()
-    return Maze(v, h)
+    # 生成した Maze インスタンスをそのまま返す
+    return maze
 
 # -------------------- ループ追加 --------------------
 def add_loops(m: Maze):
