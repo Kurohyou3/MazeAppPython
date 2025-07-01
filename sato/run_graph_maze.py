@@ -15,6 +15,7 @@ import os
 import json
 import random
 import sys
+from pathlib import Path  # パス操作を簡潔にするために利用
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict
 from collections import deque
@@ -22,7 +23,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import argparse
 
 # -------------------- 調整可能なパラメータ --------------------
-DEFAULT_OUT_DIR = os.path.join(os.path.dirname(__file__), "map_data")
+# スクリプトと同じディレクトリに map_data フォルダを作成
+DEFAULT_OUT_DIR = Path(__file__).parent / "map_data"
 
 @dataclass
 class Config:
@@ -35,7 +37,8 @@ class Config:
     maze_count: int = 1            # 生成する迷路数
     seed: int | None = None        # 乱数シード（None で毎回ランダム）
     max_attempts_per_maze: int = 500  # 径が条件に合うまでの試行上限
-    out_dir: str = field(default_factory=lambda: DEFAULT_OUT_DIR)
+    # 出力ディレクトリの Path オブジェクト
+    out_dir: Path = field(default_factory=lambda: DEFAULT_OUT_DIR)
 
 # グローバル設定インスタンス
 config = Config()
@@ -382,10 +385,15 @@ def generate_batch(cfg: Config, workers: int) -> List[Dict]:
 # 出力を保存
 
 def save_batch(mazes: List[Dict]):
-    os.makedirs(config.out_dir, exist_ok=True)
-    path = os.path.join(config.out_dir, f"maze_{config.size}.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(mazes, f, ensure_ascii=False, indent=2)
+    """生成結果を JSON ファイルに保存"""
+    config.out_dir.mkdir(exist_ok=True)
+    path = config.out_dir / f"maze_{config.size}.json"
+
+    # Path.write_text で JSON 文字列を書き込む
+    path.write_text(
+        json.dumps(mazes, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
     print(f"✅ Saved {len(mazes)} maze(s) → {path}")
 
 # -------------------- main --------------------
