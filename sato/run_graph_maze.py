@@ -15,24 +15,30 @@ import os
 import json
 import random
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Tuple, Dict
 from collections import deque
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import argparse
 
 # -------------------- 調整可能なパラメータ --------------------
-SIZE             = 10      # 盤面の幅＝高さ
-MAX_STRAIGHT     = 8       # 連続直線通路の最大長
-MAX_BRANCH_DIST  = 8       # 分岐（次数≠2）間の最長距離
-LOOP_RATE        = 0.4     # ループ付与確率
-MAX_DIAMETER     = 30      # グラフ径の上限
-MAZE_COUNT       = 1       # 生成する迷路数
-SEED             = None    # 例: 123 を指定すると結果が固定される
-MAX_ATTEMPTS_PER_MAZE = 500  # 径が条件に合うまでの試行上限
+DEFAULT_OUT_DIR = os.path.join(os.path.dirname(__file__), "map_data")
 
-# 出力先ディレクトリ
-OUT_DIR = os.path.join(os.path.dirname(__file__), "map_data")
+@dataclass
+class Config:
+    """迷路生成に必要なパラメータをまとめた設定クラス"""
+    size: int = 10                 # 盤面の幅＝高さ
+    max_straight: int = 8          # 連続直線通路の最大長
+    max_branch_dist: int = 8       # 分岐（次数≠2）間の最長距離
+    loop_rate: float = 0.4         # ループ付与確率
+    max_diameter: int = 30         # グラフ径の上限
+    maze_count: int = 1            # 生成する迷路数
+    seed: int | None = None        # 乱数シード（None で毎回ランダム）
+    max_attempts_per_maze: int = 500  # 径が条件に合うまでの試行上限
+    out_dir: str = field(default_factory=lambda: DEFAULT_OUT_DIR)
+
+# グローバル設定インスタンス
+config = Config()
 
 # -------------------- データ構造 --------------------
 Cell = Tuple[int, int]
@@ -49,11 +55,11 @@ def neigh(x: int, y: int):
     """周囲 4 方向の座標を返すジェネレータ"""
     if x > 0:
         yield 'L', x-1, y
-    if x < SIZE-1:
+    if x < config.size-1:
         yield 'R', x+1, y
     if y > 0:
         yield 'U', x, y-1
-    if y < SIZE-1:
+    if y < config.size-1:
         yield 'D', x, y+1
 
 def carve(m: Maze, x: int, y: int, d: str):
@@ -89,7 +95,7 @@ def makes_open_square(m: Maze, x: int, y: int, d: str) -> bool:
             blocks.append((x+dx, y+dy))
 
     for cx, cy in blocks:
-        if 0 <= cx < SIZE-1 and 0 <= cy < SIZE-1:
+        if 0 <= cx < config.size-1 and 0 <= cy < config.size-1:
             v0 = not m.v[cy][cx];      v1 = not m.v[cy+1][cx]
             h0 = not m.h[cy][cx];      h1 = not m.h[cy][cx+1]
             # 仮に掘った場合の壁状態を反映
@@ -110,7 +116,7 @@ def max_run_after_carve(m: Maze, x: int, y: int, d: str) -> int:
             run += 1
             ix -= 1
         ix = px
-        while ix < SIZE-1 and not m.v[py][ix]:
+        while ix < config.size-1 and not m.v[py][ix]:
             run += 1
             ix += 1
         return run
@@ -122,7 +128,7 @@ def max_run_after_carve(m: Maze, x: int, y: int, d: str) -> int:
             run += 1
             iy -= 1
         iy = py
-        while iy < SIZE-1 and not m.h[iy][px]:
+        while iy < config.size-1 and not m.h[iy][px]:
             run += 1
             iy += 1
         return run
@@ -142,12 +148,12 @@ def max_run_after_carve(m: Maze, x: int, y: int, d: str) -> int:
 # -------------------- 迷路の可視化 --------------------
 def render_maze(m: Maze) -> str:
     rows: List[str] = []
-    rows.append(" " + "_" * (SIZE * 2 - 1))
-    for y in range(SIZE):
+    rows.append(" " + "_" * (config.size * 2 - 1))
+    for y in range(config.size):
         line = ["|"]
-        for x in range(SIZE):
-            south = m.h[y][x] if y < SIZE-1 else True
-            east  = m.v[y][x] if x < SIZE-1 else True
+        for x in range(config.size):
+            south = m.h[y][x] if y < config.size-1 else True
+            east  = m.v[y][x] if x < config.size-1 else True
             line.append("_" if south else " ")
             line.append("|" if east  else " ")
         rows.append("".join(line))
@@ -155,15 +161,15 @@ def render_maze(m: Maze) -> str:
 
 # -------------------- DFS 木生成 --------------------
 def generate_tree() -> Maze:
-    v = [[True]*(SIZE-1) for _ in range(SIZE)]
-    h = [[True]*SIZE     for _ in range(SIZE-1)]
+    v = [[True]*(config.size-1) for _ in range(config.size)]
+    h = [[True]*config.size     for _ in range(config.size-1)]
     # Maze オブジェクトを最初に作成しておく
     # dataclass を使うことで v と h のリストをまとめて管理できる
     maze = Maze(v, h)
-    visited = [[False]*SIZE for _ in range(SIZE)]
-    degree  = [[0]*SIZE for _ in range(SIZE)]
+    visited = [[False]*config.size for _ in range(config.size)]
+    degree  = [[0]*config.size for _ in range(config.size)]
 
-    sx, sy = random.randrange(SIZE), random.randrange(SIZE)
+    sx, sy = random.randrange(config.size), random.randrange(config.size)
     stack = [(sx, sy, '', 0, 0)]  # (x, y, prev_dir, run_len, dist_from_branch)
     visited[sy][sx] = True
 
@@ -171,14 +177,14 @@ def generate_tree() -> Maze:
         x, y, pd, run, dist = stack[-1]
         cand = [(d, nx, ny) for d, nx, ny in neigh(x, y) if not visited[ny][nx]]
 
-        if run >= MAX_STRAIGHT:
+        if run >= config.max_straight:
             cand = [t for t in cand if t[0] != pd]
-        if dist >= MAX_BRANCH_DIST and pd:
+        if dist >= config.max_branch_dist and pd:
             cand = [t for t in cand if len(cand) >= 2]
 
         cand = [t for t in cand
                 if not makes_open_square(maze, x, y, t[0])
-                and max_run_after_carve(maze, x, y, t[0]) <= MAX_STRAIGHT]
+                and max_run_after_carve(maze, x, y, t[0]) <= config.max_straight]
 
         if cand:
             d, nx, ny = random.choice(cand)
@@ -197,16 +203,16 @@ def generate_tree() -> Maze:
 # -------------------- ループ追加 --------------------
 def add_loops(m: Maze):
     walls = (
-        [(x, y, 'R') for y in range(SIZE)   for x in range(SIZE-1) if m.v[y][x]] +
-        [(x, y, 'D') for y in range(SIZE-1) for x in range(SIZE)   if m.h[y][x]]
+        [(x, y, 'R') for y in range(config.size)   for x in range(config.size-1) if m.v[y][x]] +
+        [(x, y, 'D') for y in range(config.size-1) for x in range(config.size)   if m.h[y][x]]
     )
     random.shuffle(walls)
     for x, y, d in walls:
-        if random.random() > LOOP_RATE:
+        if random.random() > config.loop_rate:
             continue
         if makes_open_square(m, x, y, d):
             continue
-        if max_run_after_carve(m, x, y, d) > MAX_STRAIGHT:
+        if max_run_after_carve(m, x, y, d) > config.max_straight:
             continue
         carve(m, x, y, d)
 
@@ -221,45 +227,45 @@ def is_connected(m: Maze) -> bool:
                 continue
             seen.add((nx, ny))
             q.append((nx, ny))
-    return len(seen) == SIZE * SIZE
+    return len(seen) == config.size * config.size
 
 def violates(m: Maze) -> bool:
     # 直線の長さチェック
-    for y in range(SIZE):
+    for y in range(config.size):
         run = 1
-        for x in range(SIZE-1):
+        for x in range(config.size-1):
             run = run + 1 if not m.v[y][x] else 1
-            if run > MAX_STRAIGHT:
+            if run > config.max_straight:
                 return True
-    for x in range(SIZE):
+    for x in range(config.size):
         run = 1
-        for y in range(SIZE-1):
+        for y in range(config.size-1):
             run = run + 1 if not m.h[y][x] else 1
-            if run > MAX_STRAIGHT:
+            if run > config.max_straight:
                 return True
     # 2×2 通路
-    for y in range(SIZE-1):
-        for x in range(SIZE-1):
+    for y in range(config.size-1):
+        for x in range(config.size-1):
             if (
                 not m.v[y][x] and not m.v[y+1][x] and
                 not m.h[y][x] and not m.h[y][x+1]
             ):
                 return True
     # 分岐距離
-    deg = [[0]*SIZE for _ in range(SIZE)]
-    for y in range(SIZE):
-        for x in range(SIZE-1):
+    deg = [[0]*config.size for _ in range(config.size)]
+    for y in range(config.size):
+        for x in range(config.size-1):
             if not m.v[y][x]:
                 deg[y][x] += 1
                 deg[y][x+1] += 1
-    for y in range(SIZE-1):
-        for x in range(SIZE):
+    for y in range(config.size-1):
+        for x in range(config.size):
             if not m.h[y][x]:
                 deg[y][x] += 1
                 deg[y+1][x] += 1
     visited: set[Cell] = set()
-    for y in range(SIZE):
-        for x in range(SIZE):
+    for y in range(config.size):
+        for x in range(config.size):
             if (x, y) in visited:
                 continue
             if deg[y][x] == 2:
@@ -275,7 +281,7 @@ def violates(m: Maze) -> bool:
                             chain.append((nx, ny))
                             visited.add((nx, ny))
                             ends.append((nx, ny))
-                if len(chain) > MAX_BRANCH_DIST:
+                if len(chain) > config.max_branch_dist:
                     return True
             else:
                 visited.add((x, y))
@@ -283,9 +289,9 @@ def violates(m: Maze) -> bool:
 
 # -------------------- グラフと径計算 --------------------
 def maze_to_graph(m: Maze) -> Adj:
-    g: Adj = {(x, y): [] for y in range(SIZE) for x in range(SIZE)}
-    for y in range(SIZE):
-        for x in range(SIZE):
+    g: Adj = {(x, y): [] for y in range(config.size) for x in range(config.size)}
+    for y in range(config.size):
+        for x in range(config.size):
             for d, nx, ny in neigh(x, y):
                 if not wall(m, x, y, d):
                     g[(x, y)].append((nx, ny))
@@ -315,10 +321,10 @@ def generate_maze_with_diameter() -> Tuple[Maze, Tuple[int, Cell, Cell]]:
     attempts = 0
     while True:
         attempts += 1
-        if attempts > MAX_ATTEMPTS_PER_MAZE:
+        if attempts > config.max_attempts_per_maze:
             print(
                 f"⚠️  {attempts} attempts > limit."
-                f" Consider raising MAX_DIAMETER ({MAX_DIAMETER}).",
+                f" Consider raising config.max_diameter ({config.max_diameter}).",
                 file=sys.stderr,
             )
             attempts = 0
@@ -327,21 +333,21 @@ def generate_maze_with_diameter() -> Tuple[Maze, Tuple[int, Cell, Cell]]:
         if not (is_connected(m) and not violates(m)):
             continue
         dia_len, A, B = graph_diameter(maze_to_graph(m))
-        if dia_len <= MAX_DIAMETER:
+        if dia_len <= config.max_diameter:
             return m, (dia_len, A, B)
 
 # -------------------- JSON 変換 --------------------
 def maze_to_json(m: Maze, idx: int, dia: Tuple[int, Cell, Cell]) -> Dict:
     dia_len, A, B = dia
-    v_walls = [[x, y] for y in range(SIZE) for x in range(SIZE-1) if m.v[y][x]]
-    h_walls = [[x, y] for y in range(SIZE-1) for x in range(SIZE) if m.h[y][x]]
+    v_walls = [[x, y] for y in range(config.size) for x in range(config.size-1) if m.v[y][x]]
+    h_walls = [[x, y] for y in range(config.size-1) for x in range(config.size) if m.h[y][x]]
     return {
         "id": f"maze{idx:03}",
-        "size": SIZE,
-        "max_straight": MAX_STRAIGHT,
-        "max_branch_dist": MAX_BRANCH_DIST,
-        "loop_rate": LOOP_RATE,
-        "max_diameter": MAX_DIAMETER,
+        "size": config.size,
+        "max_straight": config.max_straight,
+        "max_branch_dist": config.max_branch_dist,
+        "loop_rate": config.loop_rate,
+        "max_diameter": config.max_diameter,
         "diameter": dia_len,
         "dia_endpoints": [A, B],
         "v_walls": v_walls,
@@ -349,25 +355,25 @@ def maze_to_json(m: Maze, idx: int, dia: Tuple[int, Cell, Cell]) -> Dict:
     }
 
 # -------------------- バッチ生成 --------------------
-def _generate_single(idx: int) -> Tuple[Dict, str]:
+def _generate_single(cfg: Config, idx: int) -> Tuple[Dict, str]:
     """1 つの迷路を生成して JSON と文字描画を返す"""
     m, dia_info = generate_maze_with_diameter()
     ascii_maze = render_maze(m)
     return maze_to_json(m, idx, dia_info), ascii_maze
 
 
-def generate_batch(workers: int) -> List[Dict]:
+def generate_batch(cfg: Config, workers: int) -> List[Dict]:
     """複数迷路を並列で生成する"""
-    if SEED is not None:
-        random.seed(SEED)
+    if cfg.seed is not None:
+        random.seed(cfg.seed)
 
-    out: List[Dict] = [None] * MAZE_COUNT
+    out: List[Dict] = [None] * cfg.maze_count
     with ProcessPoolExecutor(max_workers=workers) as ex:
-        futures = {ex.submit(_generate_single, i): i for i in range(1, MAZE_COUNT + 1)}
+        futures = {ex.submit(_generate_single, cfg, i): i for i in range(1, cfg.maze_count + 1)}
         for fut in as_completed(futures):
             idx = futures[fut]
             data, ascii_maze = fut.result()
-            print(f"\n[{idx}/{MAZE_COUNT}] generated (diam = {data['diameter']})")
+            print(f"\n[{idx}/{cfg.maze_count}] generated (diam = {data['diameter']})")
             print(ascii_maze)
             out[idx - 1] = data
 
@@ -376,8 +382,8 @@ def generate_batch(workers: int) -> List[Dict]:
 # 出力を保存
 
 def save_batch(mazes: List[Dict]):
-    os.makedirs(OUT_DIR, exist_ok=True)
-    path = os.path.join(OUT_DIR, f"maze_{SIZE}.json")
+    os.makedirs(config.out_dir, exist_ok=True)
+    path = os.path.join(config.out_dir, f"maze_{config.size}.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(mazes, f, ensure_ascii=False, indent=2)
     print(f"✅ Saved {len(mazes)} maze(s) → {path}")
@@ -386,7 +392,7 @@ def save_batch(mazes: List[Dict]):
 def parse_args() -> argparse.Namespace:
     """コマンドライン引数を解釈"""
     parser = argparse.ArgumentParser(description="迷路を生成して JSON 出力")
-    parser.add_argument("-n", "--count", type=int, default=MAZE_COUNT,
+    parser.add_argument("-n", "--count", type=int, default=config.maze_count,
                         help="生成する迷路の個数")
     parser.add_argument("-w", "--workers", type=int,
                         default=os.cpu_count() or 1,
@@ -398,10 +404,9 @@ def parse_args() -> argparse.Namespace:
 
 def main():
     args = parse_args()
-    global MAZE_COUNT, SEED
-    MAZE_COUNT = args.count
-    SEED = args.seed
-    batch = generate_batch(args.workers)
+    config.maze_count = args.count
+    config.seed = args.seed
+    batch = generate_batch(config, args.workers)
     save_batch(batch)
 
 if __name__ == "__main__":
